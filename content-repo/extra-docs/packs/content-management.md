@@ -4,13 +4,7 @@ title: XSOAR CI/CD (Beta)
 description: This process encapsulates what you need in order to control your XSOAR machines in an automated manner, while providing the ability to manage your own content, in your artifacts server of choice, with your version control system of choice.
 ---
 ​
-The XSOAR CI/CD content pack is intended to help security engineers develop, test, review, implement, and maintain their content in a smooth and secure process. It allows you to create your content alongside other members of your security team, and merge that content to ensure you have not overwritten work done by someone else, or vice versa. In addition, you can manage your content in a single, yet separate, repository with the out-of-the-box content provided by Cortex XSOAR. Also, you can track the versioning of your content to support rolling back, if necessary.
-​
-For example, you can implement unit tests, make sure that the content that you have created is compatible with your integrations, etc.
-​
-The pack is used to make sure that content that is developed is implemented in your environment while making certain that changes you make to your content does not break existing flows. This enables you to develop and implement with confidence that and security.
-​
-The CI/CD process works as follows:
+The XSOAR CI/CD content pack is intended to help security engineers develop, test, review, implement, and maintain their content in a smooth and secure process. It allows you to create your content alongside other members of your security team, and merge that content to ensure you have not overwritten work done by someone else, or vice versa. In addition, you can manage your content in a single, yet separate, repository with the out-of-the-box content provided by Cortex XSOAR. Also, you can track the versioning of your content to support rolling back, if necessary. For example, you can implement unit tests, make sure that the content that you have created is compatible with your integrations, etc. The pack is used to make sure that content that is developed is implemented in your environment while making certain that changes you make to your content does not break existing flows. This enables you to develop and implement with confidence that and security. The CI/CD process works as follows:
 ​
 * create your own repository in which to create your content. The examples provided in the pack are based on GitHub, however, you can use any git-supported platform.
 ​
@@ -74,9 +68,7 @@ The following are the prerequisites for using this pack:
 ​
 ### Create the Repository
 ​
-The repository is used to organize your custom content packs and your configuration files.  
-​
-You should clone our [example repository](https://github.com/demisto/content-ci-cd-template) to use as a baseline.
+The repository is used to organize your custom content packs and your configuration files. You should clone our [example repository](https://github.com/demisto/content-ci-cd-template) to use as a baseline.
 ​
 The structure of the repository is as follows:
 ​
