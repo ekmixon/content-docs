@@ -51,3 +51,15 @@ When you configure SAML 2.0, you need to map several attributes from your IdP to
 | Identity Provider Single Logout URL | URL that users are sent to after logging out of the SAML session. |
 | Single Logout Service Endpoint | Logout service with which SAML communicates. |
 | Do not map SAML groups to Demisto roles | SAML groups will not be mapped to Demisto roles |
+| Service Provider Private key (pem format) | |
+| Do not validate server certificate (insecure) | Whether to trust any certificate or not |
+| Use system proxy settings | Whether to use a system proxy or not |
+| ADFS | |
+| Compress encode URL (ADFS) | |
+| Service Identifier (ADFS) | |
+| Get service provider metadata | |
+| Single logout - specify Name ID Format | |
+| Name ID |  |
+| Do not use by default | Whether to use a the instance by default in the war room or not |
+| Log Level | In which log level is the instance running |
+| Run on Single engine | On which engine should run the instance|
