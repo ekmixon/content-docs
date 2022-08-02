@@ -587,7 +587,7 @@ def credentials(credentials):
       None: No data returned
 
     """
-    log("credentials: {}".format(credentials))
+    log(f"credentials: {credentials}")
 
 
 def getFilePath(id):
@@ -631,10 +631,7 @@ def executeCommand(command, args):
         "getContext": exampleContext,
         "getUsers": exampleUsers,
     }
-    if commands.get(command):
-        return commands.get(command)
-
-    return ""
+    return commands.get(command) or ""
 
 
 def getParam(param):

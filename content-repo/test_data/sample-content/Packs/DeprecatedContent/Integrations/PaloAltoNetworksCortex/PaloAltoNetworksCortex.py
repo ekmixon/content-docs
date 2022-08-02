@@ -464,11 +464,11 @@ def logs_human_readable_output_generator(fields: str, table_name: str, results: 
     if fields == '*':
         headers_raw_names: list = []
         # if the user queried all fields than we have preset headers
-        if table_name == 'traffic' or table_name == 'threat':
+        if table_name in {'traffic', 'threat'}:
             headers = ['Source Address', 'Destination Address', 'Application', 'Action', 'Rule', 'Time Generated']
             headers_raw_names = ['src', 'dst', 'app', 'action', 'rule', 'time_generated']
 
-        elif table_name == 'traps' or table_name == 'analytics':
+        elif table_name in {'traps', 'analytics'}:
             headers = ['Severity', 'Event Type', 'User', 'Agent Address', 'Agent Name', 'Agent Time']
             headers_raw_names = ['severity', 'eventType', 'userName', 'agentIp', 'deviceName', 'agentTime']
 
@@ -496,7 +496,7 @@ def logs_human_readable_output_generator(fields: str, table_name: str, results: 
             filtered_result = {}
             for root in result.keys():
                 parsed_tree: dict = parse_tree_by_root_to_leaf_paths(root, result[root])
-                filtered_result.update(parsed_tree)
+                filtered_result |= parsed_tree
             filtered_results.append(filtered_result)
 
     return tableToMarkdown(f'Logs {table_name} table', filtered_results, headers=headers, removeNull=True)
@@ -524,12 +524,13 @@ def parse_tree_by_root_to_leaf_paths(root: str, body) -> dict:
         root_to_node_path: str = node[0]
         body = node[1]
         if isinstance(body, dict):
-            for key, value in body.items():
-                # for each node we append a tuple of it's body and the path from the root to it
-                help_stack.append((root_to_node_path + '.' + key, value))
+            help_stack.extend(
+                (f'{root_to_node_path}.{key}', value)
+                for key, value in body.items()
+            )
+
         elif isinstance(body, list):
-            for element in body:
-                help_stack.append((root_to_node_path, element))
+            help_stack.extend((root_to_node_path, element) for element in body)
         else:
             parsed_tree[root_to_node_path] = body
 
@@ -608,12 +609,7 @@ def verify_table_fields(fields: str, table_fields: list) -> str:
             # if field is from we need to wrap it with '' to prevent confusion of the SQL syntax
             field = "'from'"
 
-        if not parsed_fields:
-            # handle first field case
-            parsed_fields += field
-        else:
-            parsed_fields += f',{field}'
-
+        parsed_fields += f',{field}' if parsed_fields else field
     return parsed_fields
 
 
@@ -625,23 +621,23 @@ def build_where_clause(args: dict, table_args_dict: dict) -> str:
     :return: a string represents the where part of a SQL query
     """
     where_clause: str = ''
-    for key in args.keys():
-        if key in table_args_dict.keys():
+    for key in args:
+        if key in table_args_dict:
             if key == 'query':
                 # if query arg is supplied than we just need to parse it and only it
                 return args[key].strip()
-            else:
-                values_list: list = argToList(args[key])
-                for raw_value in values_list:
-                    for field in table_args_dict[key]:
-                        value = raw_value
-                        if key == 'url':
-                            value = f'*{raw_value}*'
-                        if not where_clause:
-                            # the beginning of the where part should start without OR
-                            where_clause += f"{field}'{value}'"
-                        else:
-                            where_clause += f" OR {field}'{value}'"
+            values_list: list = argToList(args[key])
+            for raw_value in values_list:
+                for field in table_args_dict[key]:
+                    value = raw_value
+                    if key == 'url':
+                        value = f'*{raw_value}*'
+                    where_clause += (
+                        f" OR {field}'{value}'"
+                        if where_clause
+                        else f"{field}'{value}'"
+                    )
+
     return where_clause
 
 
@@ -651,7 +647,7 @@ def delete_empty_value_dict(raw_dict: dict):
     :param raw_dict: the dict to be filtered
     """
     parsed_dict = {key: value for key, value in raw_dict.items() if value}
-    return parsed_dict if parsed_dict else None
+    return parsed_dict or None
 
 
 def get_context_standards_outputs(results: list) -> dict:
@@ -698,15 +694,14 @@ def get_context_standards_outputs(results: list) -> dict:
         if endpoint_data:
             endpoint_data['IP'] = end_point_header.get('agentIp')
             del endpoint_data['IPAddress']
-        endpoint_data = delete_empty_value_dict(raw_endpoint_data)
-        if endpoint_data:
+        if endpoint_data := delete_empty_value_dict(raw_endpoint_data):
             hosts.append(endpoint_data)
         if hosts:
             outputs['Host(val.IP === obj.IP)'] = hosts
 
-        # Domain
-        domain_data = delete_empty_value_dict({'Name': result.get('url_domain')})
-        if domain_data:
+        if domain_data := delete_empty_value_dict(
+            {'Name': result.get('url_domain')}
+        ):
             domains.append(domain_data)
         if domains:
             outputs[outputPaths['domain']] = domains
@@ -714,8 +709,9 @@ def get_context_standards_outputs(results: list) -> dict:
         # IP
         ip_fields = ['src', 'dst', 'natsrc', 'natdst']
         for field in ip_fields:
-            ip_data = delete_empty_value_dict({'Address': result.get(field)})
-            if ip_data:
+            if ip_data := delete_empty_value_dict(
+                {'Address': result.get(field)}
+            ):
                 ips.append(ip_data)
         if ips:
             outputs[outputPaths['ip']] = ips
@@ -731,8 +727,7 @@ def get_context_standards_outputs(results: list) -> dict:
                 'SHA256': message_data.get('sha256'),
                 'DigitalSignature.Publisher': message_data.get('localAnalysisResult', {}).get('publishers')
             }
-            file_data = delete_empty_value_dict(raw_file_data)
-            if file_data:
+            if file_data := delete_empty_value_dict(raw_file_data):
                 files.append(file_data)
         if subtype and subtype.lower() == 'wildfire':
             raw_file_data = {
@@ -740,8 +735,7 @@ def get_context_standards_outputs(results: list) -> dict:
                 'Name': result.get('misc'),
                 'Type': result.get('filetype')
             }
-            file_data = delete_empty_value_dict(raw_file_data)
-            if file_data:
+            if file_data := delete_empty_value_dict(raw_file_data):
                 files.append(file_data)
         if raw_files:
             for raw_file in raw_files:
@@ -753,8 +747,7 @@ def get_context_standards_outputs(results: list) -> dict:
                     'DigitalSignature.Publisher': raw_file.get('signers'),
                     'Company': raw_file.get('companyName')
                 }
-                file_data = delete_empty_value_dict(raw_file_data)
-                if file_data:
+                if file_data := delete_empty_value_dict(raw_file_data):
                     files.append(file_data)
         if files:
             outputs[outputPaths['file']] = files
@@ -771,8 +764,7 @@ def get_context_standards_outputs(results: list) -> dict:
                 'Path': source_process.get('rawFullPath'),
                 'CommandLine': source_process.get('commandLine')
             }
-            process_data = delete_empty_value_dict(raw_process_data)
-            if process_data:
+            if process_data := delete_empty_value_dict(raw_process_data):
                 processes.append(process_data)
         if message_data and raw_processes:
             for raw_process in raw_processes:
@@ -781,8 +773,7 @@ def get_context_standards_outputs(results: list) -> dict:
                     'Parent': raw_process.get('parentId'),
                     'CommandLine': raw_process.get('commandLine'),
                 }
-                process_data = delete_empty_value_dict(raw_process_data)
-                if process_data:
+                if process_data := delete_empty_value_dict(raw_process_data):
                     processes.append(process_data)
         if processes:
             outputs['Process(val.PID === obj.PID)'] = processes
@@ -916,9 +907,8 @@ def get_access_token():
     integration_context = demisto.getIntegrationContext()
     access_token = integration_context.get('access_token')
     stored = integration_context.get('stored')
-    if access_token and stored:
-        if epoch_seconds() - stored < 60 * 60 - 30:
-            return access_token
+    if access_token and stored and epoch_seconds() - stored < 60 * 60 - 30:
+        return access_token
     headers = {
         'Authorization': AUTH_ID,
         'Accept': 'application/json'
@@ -933,8 +923,10 @@ def get_access_token():
     if dbot_response.status_code not in {200, 201}:
         msg = 'Error in authentication. Try checking the credentials you entered.'
         try:
-            demisto.info('Authentication failure from server: {} {} {}'.format(
-                dbot_response.status_code, dbot_response.reason, dbot_response.text))
+            demisto.info(
+                f'Authentication failure from server: {dbot_response.status_code} {dbot_response.reason} {dbot_response.text}'
+            )
+
             err_response = dbot_response.json()
             server_msg = err_response.get('message')
             if not server_msg:
@@ -943,9 +935,12 @@ def get_access_token():
                 if title:
                     server_msg = f'{title}. {detail}'
             if server_msg:
-                msg += ' Server message: {}'.format(server_msg)
+                msg += f' Server message: {server_msg}'
         except Exception as ex:
-            demisto.error('Failed parsing error response: [{}]. Exception: {}'.format(err_response.content, ex))
+            demisto.error(
+                f'Failed parsing error response: [{err_response.content}]. Exception: {ex}'
+            )
+
         raise Exception(msg)
     try:
         parsed_response = dbot_response.json()
@@ -973,12 +968,7 @@ def initial_logging_service():
         access_token=get_access_token(),
         verify=USE_SSL
     )
-    logging_service = LoggingService(
-        url=api_url,
-        credentials=credentials
-    )
-
-    return logging_service
+    return LoggingService(url=api_url, credentials=credentials)
 
 
 def poll_query_result(query_id):
@@ -988,10 +978,7 @@ def poll_query_result(query_id):
         "maxWaitTime": 30000  # waiting for response up to 3000ms
     }
 
-    # we poll the logging service until we have a complete response
-    response = logging_service.poll(query_id, 0, poll_params)
-
-    return response
+    return logging_service.poll(query_id, 0, poll_params)
 
 
 def query_loggings(query_data):
@@ -1013,10 +1000,9 @@ def query_loggings(query_data):
     try:
         query_id = query_result['queryId']  # access 'queryId' from 'query' response
     except Exception as e:
-        raise Exception('Received error %s when querying logs.' % e)
+        raise Exception(f'Received error {e} when querying logs.')
 
-    poll_response = poll_query_result(query_id)
-    return poll_response
+    return poll_query_result(query_id)
 
 
 def transform_row_keys(row):
@@ -1078,7 +1064,7 @@ def convert_log_to_incident(log):
         time_received = log_contents.get('serverTime')
     elif 'Firewall' in FETCH_QUERY:  # type: ignore
         time_generated = log_contents.get('time_generated')
-        occurred = datetime.utcfromtimestamp(time_generated).isoformat() + 'Z'
+        occurred = f'{datetime.utcfromtimestamp(time_generated).isoformat()}Z'
         time_received = log_contents.get('receive_time')
     elif 'XDR' in FETCH_QUERY:  # type: ignore
         # first_detected_at in alert.schedule can be present or not, can be in s or ms
@@ -1094,24 +1080,22 @@ def convert_log_to_incident(log):
             first_detected_at = str(log_contents.get('alert', {}).get('schedule', {}).get('first_detected_at'))
         except AttributeError:
             first_detected_at = None
-        if first_detected_at is not None:
-            if len(first_detected_at) == 13:  # ms
-                occurred_raw = int(float(first_detected_at) / 1000)
-            elif len(first_detected_at) == 10:  # s
-                occurred_raw = int(first_detected_at)
-            else:  # unknown length, fallback to time_received
-                occurred_raw = int(time_received)
-        else:  # not present, fallback to time_received
-            occurred_raw = int(time_received)
-        occurred = datetime.utcfromtimestamp(occurred_raw).isoformat() + 'Z'
+        if first_detected_at is not None and len(first_detected_at) == 13:  # ms
+            occurred_raw = int(float(first_detected_at) / 1000)
+        elif first_detected_at is not None and len(first_detected_at) == 10:  # s
+            occurred_raw = int(first_detected_at)
+        else:  # unknown length, fallback to time_received
+            occurred_raw = time_received
+        occurred = f'{datetime.utcfromtimestamp(occurred_raw).isoformat()}Z'
 
     # stringifying dictionary values for fetching. (json.dumps() doesn't stringify dictionary values)
     event_id = log.get('_id', '')
     incident = {
-        'name': 'Cortex Event ' + event_id,
+        'name': f'Cortex Event {event_id}',
         'rawJSON': json.dumps(log_contents, ensure_ascii=False),
-        'occurred': occurred
+        'occurred': occurred,
     }
+
     return incident, time_received
 
 
@@ -1141,11 +1125,10 @@ def query_logs_command():
     time_value = args.get('rangeValue')
 
     if time_range:
-        if time_value:
-            service_end_date = datetime.now()
-            service_start_date = get_start_time(time_range, int(time_value))
-        else:
+        if not time_value:
             raise Exception('Enter timeRange and timeValue, or startTime and endTime')
+        service_end_date = datetime.now()
+        service_start_date = get_start_time(time_range, int(time_value))
     else:
         time_format = '%Y-%m-%d %H:%M:%S'
         # Thu Jan 01 02:00:00 IST 1970' does not match format '%Y-%m-%d %H:%M:%S'
@@ -1191,18 +1174,16 @@ def query_logs_command():
 
     screened_results = results_screener('common', output)
 
-    entry = {
+    return {
         'Type': entryTypes['note'],
         'Contents': output,
         'ContentsFormat': formats['json'],
         'ReadableContentsFormat': formats['markdown'],
-        'HumanReadable': tableToMarkdown('Logs ' + table_name + ' table', screened_results),
-        'EntryContext': {
-            'Cortex.Logging(val.id === obj.id)': output
-        }
+        'HumanReadable': tableToMarkdown(
+            f'Logs {table_name} table', screened_results
+        ),
+        'EntryContext': {'Cortex.Logging(val.id === obj.id)': output},
     }
-
-    return entry
 
 
 def get_critical_logs_command():
@@ -1219,11 +1200,10 @@ def get_critical_logs_command():
     time_value = args.get('rangeValue')
 
     if time_range:
-        if time_value:
-            service_end_date = datetime.now()
-            service_start_date = get_start_time(time_range, int(time_value))
-        else:
+        if not time_value:
             raise Exception('Enter timeRange and timeValue, or startTime and endTime')
+        service_end_date = datetime.now()
+        service_start_date = get_start_time(time_range, int(time_value))
     else:
         # parses user input to datetime object
         service_start_date = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
@@ -1261,17 +1241,16 @@ def get_critical_logs_command():
 
     screened_results = results_screener('threat', output)
 
-    entry = {
+    return {
         'Type': entryTypes['note'],
         'Contents': output,
         'ContentsFormat': formats['json'],
         'ReadableContentsFormat': formats['markdown'],
-        'HumanReadable': tableToMarkdown('Logs ' + table_name + ' table', screened_results),
-        'EntryContext': {
-            'Cortex.Logging(val.id === obj.id)': output
-        }
+        'HumanReadable': tableToMarkdown(
+            f'Logs {table_name} table', screened_results
+        ),
+        'EntryContext': {'Cortex.Logging(val.id === obj.id)': output},
     }
-    return entry
 
 
 def get_social_applications_command():
@@ -1286,11 +1265,10 @@ def get_social_applications_command():
     time_value = args.get('rangeValue')
 
     if time_range:
-        if time_value:
-            service_end_date = datetime.now()
-            service_start_date = get_start_time(time_range, int(time_value))
-        else:
+        if not time_value:
             raise Exception('Enter timeRange and timeValue, or startTime and endTime')
+        service_end_date = datetime.now()
+        service_start_date = get_start_time(time_range, int(time_value))
     else:
         # parses user input to datetime object
         service_start_date = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
@@ -1328,17 +1306,16 @@ def get_social_applications_command():
 
     screened_results = results_screener('traffic', output)
 
-    entry = {
+    return {
         'Type': entryTypes['note'],
         'Contents': output,
         'ContentsFormat': formats['json'],
         'ReadableContentsFormat': formats['markdown'],
-        'HumanReadable': tableToMarkdown('Logs ' + table_name + ' table', screened_results),
-        'EntryContext': {
-            'Cortex.Logging(val.id === obj.id)': output
-        }
+        'HumanReadable': tableToMarkdown(
+            f'Logs {table_name} table', screened_results
+        ),
+        'EntryContext': {'Cortex.Logging(val.id === obj.id)': output},
     }
-    return entry
 
 
 def search_by_file_hash_command():
@@ -1355,12 +1332,11 @@ def search_by_file_hash_command():
     time_value = args.get('rangeValue')
     filehash = args.get('SHA256')
 
-    if (time_range):
-        if (time_value):
-            service_end_date = datetime.now()
-            service_start_date = get_start_time(time_range, int(time_value))
-        else:
+    if time_range:
+        if not time_value:
             raise Exception('Please enter timeRange and timeValue, or startTime and endTime')
+        service_end_date = datetime.now()
+        service_start_date = get_start_time(time_range, int(time_value))
     else:
         # parses user input to datetime object
         service_start_date = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
@@ -1398,17 +1374,16 @@ def search_by_file_hash_command():
 
     screened_results = results_screener('threat', output)
 
-    entry = {
+    return {
         'Type': entryTypes['note'],
         'Contents': output,
         'ContentsFormat': formats['json'],
         'ReadableContentsFormat': formats['markdown'],
-        'HumanReadable': tableToMarkdown('Logs ' + table_name + ' table', screened_results),
-        'EntryContext': {
-            'Cortex.Logging(val.id === obj.id)': output
-        }
+        'HumanReadable': tableToMarkdown(
+            f'Logs {table_name} table', screened_results
+        ),
+        'EntryContext': {'Cortex.Logging(val.id === obj.id)': output},
     }
-    return entry
 
 
 def query_traffic_logs_command():
@@ -1489,11 +1464,10 @@ def query_table_logs(table_fields: list, table_args: dict, query_table_name: str
     time_value = args.get('rangeValue')
 
     if time_range:
-        if time_value:
-            service_end_date = datetime.now()
-            service_start_date = get_start_time(time_range, int(time_value))
-        else:
+        if not time_value:
             raise DemistoException('Enter timeRange and timeValue, or startTime and endTime')
+        service_end_date = datetime.now()
+        service_start_date = get_start_time(time_range, int(time_value))
     else:
         # parses user input to datetime object - using dateutil.parser.parse
         service_start_date = parse(start_time)
@@ -1506,9 +1480,7 @@ def query_table_logs(table_fields: list, table_args: dict, query_table_name: str
     unverified_fields = args.get('fields', 'all')
     fields = verify_table_fields(unverified_fields, table_fields)
 
-    where = build_where_clause(args, table_args)
-
-    if where:
+    if where := build_where_clause(args, table_args):
         query = f'SELECT {fields} FROM {query_table_name} WHERE {where} LIMIT {limit}'
     else:
         query = f'SELECT {fields} FROM {query_table_name} LIMIT {limit}'
@@ -1549,7 +1521,7 @@ def query_table_logs(table_fields: list, table_args: dict, query_table_name: str
     context_standards_outputs: dict = get_context_standards_outputs(results)
     context_outputs: dict = {table_context_path: outputs}
     # merge the two dicts into one dict that outputs to context
-    context_outputs.update(context_standards_outputs)
+    context_outputs |= context_standards_outputs
 
     try:
         contents = response.json()

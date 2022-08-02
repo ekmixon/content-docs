@@ -103,9 +103,7 @@ def options_handler():
     parser.add_argument('-s', '--slack_token', help='The token for slack', required=True)
     parser.add_argument('-b', '--build_number', help='The build number', required=True)
     parser.add_argument('-c', '--ci_token', help='The token for circleci/gitlab', required=True)
-    options = parser.parse_args()
-
-    return options
+    return parser.parse_args()
 
 
 def main():

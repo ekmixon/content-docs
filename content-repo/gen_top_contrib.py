@@ -16,7 +16,7 @@ HEADERS = {
     'Accept': 'application/vnd.github.v3+json',
 }
 if TOKEN:
-    HEADERS['Authorization'] = 'Bearer ' + TOKEN
+    HEADERS['Authorization'] = f'Bearer {TOKEN}'
 VERIFY = os.getenv('SKIP_SSL_VERIFY') is None
 
 
@@ -100,7 +100,7 @@ def get_contractors_prs() -> list:
     Get all contractors pr numbers and users we want to ignore in the calculation.
     Returns: The external prs list of the contractors and the users we want to ignore.
     """
-    url = URL + '/search/issues'
+    url = f'{URL}/search/issues'
     query = 'type:pr state:closed org:demisto repo:content is:merged base:master ' \
             'head:contrib/crest head:contrib/qmasters head:contrib/mchasepan head:contrib/roybi72'
     params = {
@@ -115,9 +115,7 @@ def get_contractors_prs() -> list:
     next_pages_prs = github_pagination_prs(url, params, res)
     prs.extend(next_pages_prs)
 
-    external_prs = get_external_prs(prs)
-
-    return external_prs
+    return get_external_prs(prs)
 
 
 def get_contrib_prs() -> List[Dict]:
@@ -125,7 +123,7 @@ def get_contrib_prs() -> List[Dict]:
     Get the contributors prs.
     Returns: The list of PRs.
     """
-    url = URL + '/search/issues'
+    url = f'{URL}/search/issues'
     query = 'type:pr state:closed org:demisto repo:content is:merged base:master head:contrib/'
     params = {
         'q': query,
@@ -147,7 +145,7 @@ def get_contrib_prs() -> List[Dict]:
         for external_pr in contractors_prs:
             pr_number = external_pr.get('pr_number')
             if pr_number == pr:
-                contrib_prs = [i for i in contrib_prs if not (i['pr_number'] == pr_number)]
+                contrib_prs = [i for i in contrib_prs if i['pr_number'] != pr_number]
 
     return contrib_prs
 
@@ -166,8 +164,7 @@ def get_github_user(user_name: str) -> Dict:
     if res.status_code == 404:
         print(f'The user {user_name} was not found.')
     else:
-        response = res.json()
-        return response
+        return res.json()
 
 
 def get_inner_pr_request() -> list:
@@ -182,11 +179,10 @@ def get_inner_pr_request() -> list:
         pr = item.get('pr_number')
         if 'Contributor' in pr_body:
             contributor = USER_NAME_REGEX.search(pr_body)[0].replace('\n', '')
-            user_profile = get_github_user(contributor)
-            if user_profile:
+            if user_profile := get_github_user(contributor):
                 users_info.append(user_profile)
         else:
-            url = URL + f'/repos/demisto/content/pulls/{pr}'
+            url = f'{URL}/repos/demisto/content/pulls/{pr}'
             res = requests.request('GET', url, headers=HEADERS, verify=VERIFY)
             if res.status_code == 404:
                 print(f'The following PR was not found: {pr}')
@@ -223,26 +219,25 @@ def get_contributors_users(users_info) -> list:
         github_profile = item.get('html_url')
         pr_body = item.get('body')
 
-        if not user == 'xsoar-bot':
+        if user != 'xsoar-bot':
             users.append({
                 'Contributor': f"<img src='{item.get('avatar_url')}'/><br></br> "
                                f"<a href='{github_profile}' target='_blank'>{user}</a>"
             })
 
-        if user == 'xsoar-bot':
-            if 'Contributor' in pr_body:
-                contributor = USER_NAME_REGEX.search(pr_body)[0].replace('\n', '')
-                user_info = get_github_user(contributor)
-                github_avatar = user_info.get('avatar_url')
-                github_profile = user_info.get('html_url')
-                if not github_avatar and not github_profile:
-                    print(f'The user "{contributor}" was not found.')
-                    continue
+        if user == 'xsoar-bot' and 'Contributor' in pr_body:
+            contributor = USER_NAME_REGEX.search(pr_body)[0].replace('\n', '')
+            user_info = get_github_user(contributor)
+            github_avatar = user_info.get('avatar_url')
+            github_profile = user_info.get('html_url')
+            if not github_avatar and not github_profile:
+                print(f'The user "{contributor}" was not found.')
+                continue
 
-                users.append({
-                    'Contributor': f"<img src='{github_avatar}'/><br></br> "
-                                   f"<a href='{github_profile}' target='_blank'>{contributor}</a>"
-                })
+            users.append({
+                'Contributor': f"<img src='{github_avatar}'/><br></br> "
+                               f"<a href='{github_profile}' target='_blank'>{contributor}</a>"
+            })
 
     for user in users:
         prs = users.count(user)
@@ -264,7 +259,7 @@ def main():
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-t", "--target", help="Target dir to generate docs at.", required=True)
     args = parser.parse_args()
-    contrib_target = args.target + '/top-contributors.md'
+    contrib_target = f'{args.target}/top-contributors.md'
     response = get_inner_pr_request()
     users_list = get_contributors_users(response)
     with open(contrib_target, 'a', encoding='utf-8') as f:

@@ -117,13 +117,13 @@ def findfiles(match_patterns: List[str], target_dir: str) -> List[str]:
     Returns:
         list of found dirs
     """
-    rules = [re.compile(target_dir + "/" + r, re.IGNORECASE) for r in match_patterns]
+    rules = [
+        re.compile(f"{target_dir}/{r}", re.IGNORECASE) for r in match_patterns
+    ]
+
     res = []
-    for d in glob.glob(target_dir + "/**", recursive=True):
-        for r in rules:
-            if r.match(d):
-                res.append(d)
-                continue
+    for d in glob.glob(f"{target_dir}/**", recursive=True):
+        res.extend(d for r in rules if r.match(d))
     return res
 
 
@@ -151,8 +151,7 @@ def get_extracted_deprecated_note(description: str):
         r'.*deprecated\s*[\.\-:]\s*(.*?No available replacement.*?\.)',
     ]
     for r in regexs:
-        dep_match = re.match(r, description, re.IGNORECASE)
-        if dep_match:
+        if dep_match := re.match(r, description, re.IGNORECASE):
             res = dep_match[1]
             if res[0].islower():
                 res = res[0].capitalize() + res[1:]
@@ -178,13 +177,15 @@ def get_fromversion_data(yml_data: dict):
 
 def get_beta_data(yml_data: dict, content: str):
     if yml_data.get('beta'):
-        msg = ''
-        if not re.search(r'This is a beta', content, re.IGNORECASE):
-            # only add the beta disclaimer if it is not in the docs
-            msg = 'This is a beta Integration, which lets you implement and test pre-release software. ' \
-                  'Since the integration is beta, it might contain bugs. Updates to the integration during the beta phase might '\
-                  'include non-backward compatible features. We appreciate your feedback on the quality and usability of the '\
-                  'integration to help us identify issues, fix them, and continually improve.\n'
+        msg = (
+            ''
+            if re.search(r'This is a beta', content, re.IGNORECASE)
+            else 'This is a beta Integration, which lets you implement and test pre-release software. '
+            'Since the integration is beta, it might contain bugs. Updates to the integration during the beta phase might '
+            'include non-backward compatible features. We appreciate your feedback on the quality and usability of the '
+            'integration to help us identify issues, fix them, and continually improve.\n'
+        )
+
         return f':::info beta\n{msg}:::\n\n'
     return ""
 
@@ -199,12 +200,12 @@ def get_packname_from_metadata(pack_dir):
 def get_pack_link(file_path: str) -> str:
     # the regex extracts pack name from paths, for example: content/Packs/EWSv2 -> EWSv2
     match = re.search(r'Packs[/\\]([^/\\]+)[/\\]?', file_path)
-    pack_name = match.group(1) if match else ''
+    pack_name = match[1] if match else ''
     pack_name_in_link = pack_name.replace('-', '')
 
     # the regex extracts pack path, for example: content/Packs/EWSv2/Integrations/I1/README.md -> content/Packs/EWSv2/
     match = re.match(r'.+/Packs/.+?(?=/)', file_path)
-    pack_dir = match.group(0) if match else ''
+    pack_dir = match[0] if match else ''
     is_pack_hidden = False
 
     try:
@@ -233,9 +234,9 @@ def process_readme_doc(target_dir: str, content_dir: str, prefix: str,
     try:
         base_dir = os.path.dirname(readme_file)
         if readme_file.endswith('_README.md'):
-            ymlfile = readme_file[0:readme_file.index('_README.md')] + '.yml'
+            ymlfile = readme_file[:readme_file.index('_README.md')] + '.yml'
         else:
-            ymlfiles = glob.glob(base_dir + '/*.yml')
+            ymlfiles = glob.glob(f'{base_dir}/*.yml')
             if not ymlfiles:
                 raise ValueError('no yml file found')
             if len(ymlfiles) > 1:
@@ -265,8 +266,7 @@ def process_readme_doc(target_dir: str, content_dir: str, prefix: str,
         has_header = len(lines) >= 2 and lines[0].startswith('---') and lines[1].startswith('id:')
         if not has_header:
             readme_repo_path = readme_file
-            if readme_repo_path.startswith(content_dir):
-                readme_repo_path = readme_repo_path[len(content_dir):]
+            readme_repo_path = readme_repo_path.removeprefix(content_dir)
             edit_url = f'https://github.com/demisto/content/blob/{BRANCH}/{readme_repo_path}'
             header = f'---\nid: {id}\ntitle: {json.dumps(doc_info.name)}\ncustom_edit_url: {edit_url}\n---\n\n'
             content = get_deprecated_data(yml_data, desc, readme_file) + content
@@ -288,10 +288,7 @@ def process_readme_doc(target_dir: str, content_dir: str, prefix: str,
 
 def handle_desc_field(desc: str):
 
-    word_break = False
-    for word in re.split(r'\s|-', desc):
-        if len(word) > 40:
-            word_break = True
+    word_break = any(len(word) > 40 for word in re.split(r'\s|-', desc))
     desc = html.escape(desc)
     if word_break:  # long words tell browser to break in the midle
         desc = '<span style={{wordBreak: "break-word"}}>' + desc + '</span>'
@@ -308,12 +305,13 @@ def process_release_doc(target_dir: str, release_file: str) -> Optional[DocInfo]
             content = f.read()
         desc_match = re.search(r'Published on .*', content, re.IGNORECASE)
         if not desc_match:
-            raise ValueError('Published on... not found for release: ' + name)
+            raise ValueError(f'Published on... not found for release: {name}')
         doc_info = DocInfo(name, f'Content Release {name}', desc_match[0], release_file)
         edit_url = f'https://github.com/demisto/content-docs/blob/master/content-repo/extra-docs/releases/{name}.md'
         #  replace the title to be with one # so it doesn't appear in the TOC
         content = re.sub(r'^## Demisto Content Release Notes', '# Demisto Content Release Notes', content)
-        content = f'---\nid: {name}\nsidebar_label: "{name}"\ncustom_edit_url: {edit_url}\n---\n\n' + content
+        content = f'---\nid: {name}\nsidebar_label: "{name}"\ncustom_edit_url: {edit_url}\n---\n\n{content}'
+
         download_msg = "Download"
         packs_download = ""
         if name > StrictVersion('20.8.0'):
@@ -576,16 +574,18 @@ def insert_approved_tags_and_usecases():
 def is_xsoar_supported_pack(pack_dir: str):
     with open(f'{pack_dir}/pack_metadata.json', 'r') as f:
         metadata = json.load(f)
-    return 'xsoar' == metadata.get('support')
+    return metadata.get('support') == 'xsoar'
 
 
 def get_blame_date(content_dir: str, file: str, line: int):
     file_rel = os.path.relpath(file, content_dir)
     blame_out = subprocess.check_output(['git', 'blame', '-p', '-L', f'{line},+1', file_rel], text=True, cwd=content_dir)
-    auth_date = re.search(r'^author-time\s+(\d+)', blame_out, re.MULTILINE)
-    if not auth_date:
+    if auth_date := re.search(
+        r'^author-time\s+(\d+)', blame_out, re.MULTILINE
+    ):
+        return datetime.utcfromtimestamp(int(auth_date[1]))
+    else:
         raise ValueError(f'author-date not found for blame output of file: [{file}]: {blame_out}')
-    return datetime.utcfromtimestamp(int(auth_date.group(1)))
 
 
 def get_deprecated_display_dates(dep_date: datetime) -> Tuple[str, str]:
@@ -604,8 +604,8 @@ def get_deprecated_display_dates(dep_date: datetime) -> Tuple[str, str]:
 
 
 def find_deprecated_integrations(content_dir: str):
-    files = glob.glob(content_dir + '/Packs/*/Integrations/*.yml')
-    files.extend(glob.glob(content_dir + '/Packs/*/Integrations/*/*.yml'))
+    files = glob.glob(f'{content_dir}/Packs/*/Integrations/*.yml')
+    files.extend(glob.glob(f'{content_dir}/Packs/*/Integrations/*/*.yml'))
     res: List[DeprecatedInfo] = []
     # go over each file and check if contains deprecated: true
     for f in files:
@@ -613,7 +613,7 @@ def find_deprecated_integrations(content_dir: str):
             content = fr.read()
             if dep_search  := re.search(r'^deprecated:\s*true', content, re.MULTILINE):
                 pack_dir = re.match(r'.+/Packs/.+?(?=/)', f)
-                if is_xsoar_supported_pack(pack_dir.group(0)):  # type: ignore[union-attr]
+                if is_xsoar_supported_pack(pack_dir[0]):  # type: ignore[union-attr]
                     yml_data = yaml.safe_load(content)
                     id = yml_data.get('commonfields', {}).get('id') or yml_data['name']
                     name: str = yml_data.get('display') or yml_data['name']
@@ -766,8 +766,8 @@ See: https://github.com/demisto/content-docs/#generating-reference-docs''',
         add_deprected_integrations_info(args.dir, f'{args.target}/{ARTICLES_PREFIX}/deprecated.md', DEPRECATED_INFO_FILE,
                                         f'{args.target}/../../static/assets')
     index_base = f'{os.path.dirname(os.path.abspath(__file__))}/reference-index.md'
-    index_target = args.target + '/index.md'
-    articles_index_target = args.target + '/articles-index.md'
+    index_target = f'{args.target}/index.md'
+    articles_index_target = f'{args.target}/articles-index.md'
     articles_index_base = f'{os.path.dirname(os.path.abspath(__file__))}/articles-index.md'
     shutil.copy(index_base, index_target)
     shutil.copy(articles_index_base, articles_index_target)

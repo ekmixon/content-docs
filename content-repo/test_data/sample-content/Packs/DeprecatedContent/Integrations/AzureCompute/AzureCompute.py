@@ -141,7 +141,7 @@ def screen_errors(error_message, *args, **kwargs):
             if updated_error_message != '':
                 updated_error_message += '\n' + str(key) + ': ' + str(val)
             else:
-                updated_error_message += str(key) + ': ' + str(val)
+                updated_error_message += f'{str(key)}: {str(val)}'
     elif not isinstance(error_message, str):
         # If not an Exception or a String, try to cast to a string
         updated_error_message = str(error_message)
@@ -230,7 +230,10 @@ def set_subscription_id():
     try:
         response = r.json()
         if r.status_code != requests.codes.ok:
-            return_error('Error: {}\nDescription:{}'.format(response.get('title'), response.get('detail')))
+            return_error(
+                f"Error: {response.get('title')}\nDescription:{response.get('detail')}"
+            )
+
         sub_id = response.get('subscription_id')
         demisto.setIntegrationContext({
             'token': response.get('token'),
@@ -250,10 +253,13 @@ def update_access_token():
     Check if we have a valid token and if not get one and update global HEADERS
     """
     ctx = demisto.getIntegrationContext()
-    if ctx.get('token') and ctx.get('stored'):
-        if epoch_seconds() - ctx.get('stored') < 60 * 60 - 30:
-            HEADERS['Authorization'] = 'Bearer ' + ctx.get('token')
-            return
+    if (
+        ctx.get('token')
+        and ctx.get('stored')
+        and epoch_seconds() - ctx.get('stored') < 60 * 60 - 30
+    ):
+        HEADERS['Authorization'] = 'Bearer ' + ctx.get('token')
+        return
     headers = {
         'Authorization': TOKEN,
         'Accept': 'application/json'
@@ -266,8 +272,11 @@ def update_access_token():
     try:
         response = r.json()
     except ValueError:
-        err_msg = 'There was a problem in retrieving an updated access token.'
-        err_msg += ' The response from the Demistobot server did not contain the expected content.'
+        err_msg = (
+            'There was a problem in retrieving an updated access token.'
+            + ' The response from the Demistobot server did not contain the expected content.'
+        )
+
         return_error(err_msg)
     demisto.setIntegrationContext({
         'token': response.get('token'),
@@ -287,8 +296,11 @@ def assign_image_attributes(image):
     image = image.lower()
     image_properties = IMAGES.get(image)
     if not image_properties:
-        err_msg = 'Invalid value entered for the \'os_image\' argument. '
-        err_msg += 'Only values from the provided options are accepted.'
+        err_msg = (
+            'Invalid value entered for the \'os_image\' argument. '
+            + 'Only values from the provided options are accepted.'
+        )
+
         raise Exception(err_msg)
     sku = image_properties.get('sku')
     publisher = image_properties.get('publisher')
@@ -325,60 +337,52 @@ def create_vm_parameters(args):
     admin_username = args.get('admin_username')
     admin_password = args.get('admin_password')
     nic_name = args.get('nic_name')
-    full_nic_id = '/subscriptions/' + SUBSCRIPTION_ID + '/resourceGroups/'  # type: ignore
-    full_nic_id += resource_group + '/providers/Microsoft.Network/networkInterfaces/' + nic_name
+    full_nic_id = f'/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/'
+    full_nic_id += f'{resource_group}/providers/Microsoft.Network/networkInterfaces/{nic_name}'
+
 
     if not image and not (sku and publisher and version and offer):
-        err_msg = 'You must enter a value for the \'os_image\' argument '
-        err_msg += 'or the group of arguments, \'sku\', \'publisher\', \'version\', and \'offer\'.'
+        err_msg = (
+            'You must enter a value for the \'os_image\' argument '
+            + 'or the group of arguments, \'sku\', \'publisher\', \'version\', and \'offer\'.'
+        )
+
         raise Exception(err_msg)
 
     if image:
         sku, publisher, offer, version = assign_image_attributes(image)
 
-    # Construct VM object
-    vm = {
+    return {
         'location': location,
         'properties': {
-            'hardwareProfile': {
-                'vmSize': vm_size
-            },
+            'hardwareProfile': {'vmSize': vm_size},
             'storageProfile': {
                 'imageReference': {
                     'sku': sku,
                     'publisher': publisher,
                     'version': version,
-                    'offer': offer
+                    'offer': offer,
                 },
                 'osDisk': {
                     'caching': 'ReadWrite',
-                    'managedDisk': {
-                        'storageAccountType': 'Standard_LRS'
-                    },
+                    'managedDisk': {'storageAccountType': 'Standard_LRS'},
                     'name': vm_name,
-                    'createOption': 'FromImage'
-                }
+                    'createOption': 'FromImage',
+                },
             },
             'osProfile': {
                 'adminUsername': admin_username,
                 'computerName': vm_name,
-                'adminPassword': admin_password
+                'adminPassword': admin_password,
             },
             'networkProfile': {
                 'networkInterfaces': [
-                    {
-                        'id': full_nic_id,
-                        'properties': {
-                            'primary': 'true'
-                        }
-                    }
+                    {'id': full_nic_id, 'properties': {'primary': 'true'}}
                 ]
-            }
+            },
         },
-        'name': vm_name
+        'name': vm_name,
     }
-
-    return vm
 
 
 def http_request(method, url_suffix=None, data=None, headers=HEADERS,
@@ -419,7 +423,7 @@ def http_request(method, url_suffix=None, data=None, headers=HEADERS,
     """
     update_access_token()
     try:
-        url = full_url if full_url else None
+        url = full_url or None
         if not url:
             url = BASE_URL + url_suffix if url_suffix else BASE_URL
         r = requests.request(
@@ -431,12 +435,13 @@ def http_request(method, url_suffix=None, data=None, headers=HEADERS,
             verify=USE_SSL,
             json=j_son
         )
-        green_codes = codes if codes else {200, 201, 202, 204}
+        green_codes = codes or {200, 201, 202, 204}
         if r.status_code not in green_codes:
-            err_msg = 'Error in API call to Azure Compute Integration [{}] - {}'.format(r.status_code, r.reason)
-            err = r.json().get('error')
-            if err:
-                err_msg1 = '\nError code: {}\nError message: {}'.format(err.get('code'), err.get('message'))
+            err_msg = f'Error in API call to Azure Compute Integration [{r.status_code}] - {r.reason}'
+
+            if err := r.json().get('error'):
+                err_msg1 = f"\nError code: {err.get('code')}\nError message: {err.get('message')}"
+
                 err_msg += err_msg1
             raise Exception(err_msg)
         response = json.loads(r.content)
@@ -461,8 +466,7 @@ def test_module():
 
 def list_resource_groups():
     parameters = {'api-version': '2018-05-01'}
-    response = http_request('GET', params=parameters, codes={200})
-    return response
+    return http_request('GET', params=parameters, codes={200})
 
 
 def list_resource_groups_command():
@@ -502,11 +506,9 @@ def list_resource_groups_command():
 
 def list_vms(resource_group):
     # Construct endpoint URI suffix
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines'
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines'
     parameters = {'api-version': API_VERSION}
-    # Call API
-    response = http_request('GET', url_endpoint, params=parameters, codes={200})
-    return response
+    return http_request('GET', url_endpoint, params=parameters, codes={200})
 
 
 def list_vms_command():
@@ -545,7 +547,8 @@ def list_vms_command():
         }
         vms.append(vm)
 
-    title = 'Microsoft Azure - List of Virtual Machines in Resource Group "{}"'.format(resource_group)
+    title = f'Microsoft Azure - List of Virtual Machines in Resource Group "{resource_group}"'
+
     table_headers = ['Name', 'ID', 'Size', 'OS', 'Location', 'ProvisioningState', 'ResourceGroup']
     human_readable = tableToMarkdown(title, vms, headers=table_headers, removeNull=True)
     entry_context = {'Azure.Compute(val.Name && val.Name === obj.Name)': vms}
@@ -565,13 +568,11 @@ def get_vm(args):
     vm_name = args.get('virtual_machine_name')
 
     # Construct endpoint URI suffix
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}'
+
     parameters = {'$expand': 'instanceView', 'api-version': API_VERSION}
 
-    # Call API
-    response = http_request('GET', url_endpoint, params=parameters, codes={200})
-
-    return response
+    return http_request('GET', url_endpoint, params=parameters, codes={200})
 
 
 def get_vm_command():
@@ -618,7 +619,7 @@ def get_vm_command():
         'ResourceGroup': args.get('resource_group')
     }
 
-    title = 'Properties of VM "{}"'.format(vm_name)
+    title = f'Properties of VM "{vm_name}"'
     table_headers = ['Name', 'ID', 'Size', 'OS', 'ProvisioningState', 'Location', 'PowerState']
     human_readable = tableToMarkdown(title, vm, headers=table_headers, removeNull=True)
     entry_context = {'Azure.Compute(val.Name && val.Name === obj.Name)': vm}
@@ -638,16 +639,14 @@ def create_vm(args):
     vm_name = args.get('virtual_machine_name')
 
     # Construct endpoint URI suffix
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}'
+
     parameters = {'api-version': API_VERSION}
 
     # Construct VM object utilizing parameters passed as command arguments
     payload = create_vm_parameters(args)
 
-    # Call API
-    response = http_request('PUT', url_endpoint, params=parameters, j_son=payload)
-
-    return response
+    return http_request('PUT', url_endpoint, params=parameters, j_son=payload)
 
 
 def create_vm_command():
@@ -717,7 +716,7 @@ def create_vm_command():
         'ResourceGroup': args.get('resource_group')
     }
 
-    title = 'Created Virtual Machine "{}"'.format(vm_name)
+    title = f'Created Virtual Machine "{vm_name}"'
     human_readable = tableToMarkdown(title, vm, removeNull=True)
     entry_context = {'Azure.Compute(val.Name && val.Name === obj.Name)': vm}
     demisto.results({
@@ -736,20 +735,21 @@ def delete_vm(args):
     vm_name = args.get('virtual_machine_name')
 
     # Construct endpoint URI suffix (for de-allocation of compute resources)
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name + '/deallocate'
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}/deallocate'
+
     parameters = {'api-version': API_VERSION}
 
     # Call API to deallocate compute resources
     http_request('POST', url_endpoint, params=parameters, codes={200, 202})
 
     # Construct endpoint URI suffix (for deletion)
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}'
+
     parameters = {'api-version': API_VERSION}
 
-    # Call API to delete
-    response = http_request('DELETE', url_endpoint, params=parameters, codes={200, 202, 204})
-
-    return response
+    return http_request(
+        'DELETE', url_endpoint, params=parameters, codes={200, 202, 204}
+    )
 
 
 def delete_vm_command():
@@ -767,7 +767,8 @@ def delete_vm_command():
     """
     args = demisto.args()
     delete_vm(args)
-    success_msg = '"{}" VM Deletion Successfully Initiated'.format(args.get('virtual_machine_name'))
+    success_msg = f""""{args.get('virtual_machine_name')}" VM Deletion Successfully Initiated"""
+
     demisto.results(success_msg)
 
 
@@ -777,13 +778,11 @@ def start_vm(args):
     vm_name = args.get('virtual_machine_name')
 
     # Construct endpoint URI suffix
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name + '/start'
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}/start'
+
     parameters = {'api-version': API_VERSION}
 
-    # Call API
-    response = http_request('POST', url_endpoint, params=parameters, codes={202})
-
-    return response
+    return http_request('POST', url_endpoint, params=parameters, codes={202})
 
 
 def start_vm_command():
@@ -813,7 +812,7 @@ def start_vm_command():
         'PowerState': 'VM starting'
     }
 
-    title = 'Power-on of Virtual Machine "{}" Successfully Initiated'.format(vm_name)
+    title = f'Power-on of Virtual Machine "{vm_name}" Successfully Initiated'
     human_readable = tableToMarkdown(title, vm, removeNull=True)
     entry_context = {'Azure.Compute(val.Name && val.Name === obj.Name)': vm}
     demisto.results({
@@ -832,13 +831,11 @@ def poweroff_vm(args):
     vm_name = args.get('virtual_machine_name')
 
     # Construct endpoint URI suffix
-    url_endpoint = resource_group + '/providers/Microsoft.Compute/virtualMachines/' + vm_name + '/powerOff'
+    url_endpoint = f'{resource_group}/providers/Microsoft.Compute/virtualMachines/{vm_name}/powerOff'
+
     parameters = {'api-version': API_VERSION}
 
-    # Call API
-    response = http_request('POST', url_endpoint, params=parameters, codes={202})
-
-    return response
+    return http_request('POST', url_endpoint, params=parameters, codes={202})
 
 
 def poweroff_vm_command():
@@ -868,7 +865,7 @@ def poweroff_vm_command():
         'PowerState': 'VM stopping'
     }
 
-    title = 'Power-off of Virtual Machine "{}" Successfully Initiated'.format(vm_name)
+    title = f'Power-off of Virtual Machine "{vm_name}" Successfully Initiated'
     human_readable = tableToMarkdown(title, vm, removeNull=True)
     entry_context = {'Azure.Compute(val.Name && val.Name === obj.Name)': vm}
     demisto.results({
@@ -882,6 +879,7 @@ def poweroff_vm_command():
 
 
 '''COMMAND SWITCHBOARD'''
+
 
 commands = {
     'azure-vm-list-instances': list_vms_command,
@@ -898,11 +896,11 @@ commands = {
 try:
     # Initial setup
     SUBSCRIPTION_ID = set_subscription_id()
-    BASE_URL = SERVER + '/subscriptions/' + SUBSCRIPTION_ID + '/resourceGroups/'
+    BASE_URL = f'{SERVER}/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/'
 
     if demisto.command() == 'test-module':
         test_module()
-    elif demisto.command() in commands.keys():
+    elif demisto.command() in commands:
         commands[demisto.command()]()
 
 except Exception as e:

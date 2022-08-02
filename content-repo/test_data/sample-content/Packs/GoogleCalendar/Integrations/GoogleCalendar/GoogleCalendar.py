@@ -230,7 +230,7 @@ def acl_list_command(client, args: Dict[str, Any]) -> CommandResults:
     if response.get('nextPageToken'):
         readable_hr += NEXT_PAGE_TOKEN.format(response.get('nextPageToken'))
     if response.get('nextSyncToken'):
-        readable_hr += '### Next Sync Token: {}\n'.format(response.get('nextSyncToken'))
+        readable_hr += f"### Next Sync Token: {response.get('nextSyncToken')}\n"
 
     readable_hr += tableToMarkdown(HR_MESSAGES['LIST_COMMAND_SUCCESS'].format('ACL', len(acl_hr_list)), acl_hr_list,
                                    headerTransform=pascalToSpace,

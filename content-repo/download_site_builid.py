@@ -58,11 +58,15 @@ def download_site_buiild(event_file: str, download_path: str = "build-site.tar.g
     res = requests.get(f'{circle_url}/artifacts', verify=VERIFY_SSL)
     res.raise_for_status()
     artifacts = res.json()
-    download_url = None
-    for art in artifacts:
-        if 'build-site.tar.gz' in art.get('path'):
-            download_url = art.get('url')
-            break
+    download_url = next(
+        (
+            art.get('url')
+            for art in artifacts
+            if 'build-site.tar.gz' in art.get('path')
+        ),
+        None,
+    )
+
     if not download_url:
         raise ValueError(f"download url missing for artifacts: {artifacts}")
     print(f'Downloading build artifact from: {download_url} to: {download_path} ...')
@@ -75,8 +79,7 @@ def main():
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-e", "--event", help="Github event data file which triggered the workflow", required=True)
     args = parser.parse_args()
-    pr = download_site_buiild(args.event)
-    if pr:
+    if pr := download_site_buiild(args.event):
         # priint so workflow picks up the pr
         # see: https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-commands-for-github-actions#setting-an-output-parameter
         print(f'::set-output name=forked_pr::{pr}')

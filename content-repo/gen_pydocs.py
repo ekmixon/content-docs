@@ -65,7 +65,7 @@ class DemistoMarkdownRenderer(MarkdownRenderer):
             docstring = html.escape(obj.docstring) if should_escape else obj.docstring
             lines = docstring.split('\n')
             if self.docstrings_as_blockquote:
-                lines = ['> ' + x for x in lines]
+                lines = [f'> {x}' for x in lines]
             fp.write('\n'.join(lines))
             fp.write('\n\n')
 
@@ -91,47 +91,46 @@ class CommonServerPythonProcessor(SphinxProcessor):
             line_codeblock = line.startswith('    ')
 
             if not in_codeblock and not line_codeblock:
-                match = re.match(r'\s*:(?:type)\s+(\w+)\s*:(.*)?$', line)
-                if match:
-                    param_type = match.group(2).strip().replace('`', '')
+                if match := re.match(r'\s*:(?:type)\s+(\w+)\s*:(.*)?$', line):
+                    param_type = match[2].strip().replace('`', '')
                     continue
 
-                match = re.match(r'\s*:(?:arg|argument|param|parameter)\s+(\w+)\s*:(.*)?$', line)
-                if match:
+                if match := re.match(
+                    r'\s*:(?:arg|argument|param|parameter)\s+(\w+)\s*:(.*)?$', line
+                ):
                     keyword = 'Arguments'
-                    param = match.group(1)
-                    text = match.group(2)
+                    param = match[1]
+                    text = match[2]
                     text = text.strip()
 
                     component = components.setdefault(keyword, [])
-                    component.append('- `{}` _{}_: {}'.format(param, param_type, text))
+                    component.append(f'- `{param}` _{param_type}_: {text}')
                     continue
 
-                match = re.match(r'\s*:(?:return|returns)\s*:(.*)?$', line)
-                if match:
-                    return_desc = match.group(1).strip()
+                if match := re.match(r'\s*:(?:return|returns)\s*:(.*)?$', line):
+                    return_desc = match[1].strip()
                     continue
 
-                match = re.match(r'\s*:(?:rtype)\s*:(.*)?$', line)
-                if match:
+                if match := re.match(r'\s*:(?:rtype)\s*:(.*)?$', line):
                     keyword = 'Returns'
-                    return_type = match.group(1).strip().replace('`', '')
+                    return_type = match[1].strip().replace('`', '')
                     if 'None' in return_type:
                         continue
 
                     component = components.setdefault(keyword, [])
-                    component.append('- `{}` - {}'.format(return_type, return_desc))
+                    component.append(f'- `{return_type}` - {return_desc}')
                     continue
 
-                match = re.match('\\s*:(?:raises|raise)\\s+(\\w+)\\s*:(.*)?$', line)
-                if match:
+                if match := re.match(
+                    '\\s*:(?:raises|raise)\\s+(\\w+)\\s*:(.*)?$', line
+                ):
                     keyword = 'Raises'
-                    exception = match.group(1)
-                    text = match.group(2)
+                    exception = match[1]
+                    text = match[2]
                     text = text.strip()
 
                     component = components.setdefault(keyword, [])
-                    component.append('- `{}`: {}'.format(exception, text))
+                    component.append(f'- `{exception}`: {text}')
                     continue
 
             stripped_line = line.strip()

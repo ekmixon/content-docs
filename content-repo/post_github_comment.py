@@ -22,18 +22,25 @@ def get_post_url():
     if os.getenv('CIRCLE_PULL_REQUEST'):
         # change: https://github.com/demisto/content-docs/pull/9
         # to: https://api.github.com/repos/demisto/content-docs/issues/9/comments
-        post_url = os.environ['CIRCLE_PULL_REQUEST'].replace('github.com', 'api.github.com/repos').replace('pull', 'issues') + "/comments"
-    else:
-        # try to get from comment
-        last_comment = subprocess.check_output(["git", "log", "-1", "--pretty=%B"], text=True)
-        m = re.search(r"#(\d+)", last_comment, re.MULTILINE)
-        if not m:
-            print("No issue id found in last commit comment. Ignoring: \n------\n{}\n-------".format(last_comment))
-            return
-        issue_id = m.group(1)
-        print("Issue id found from last commit comment: " + issue_id)
-        post_url = "https://api.github.com/repos/demisto/content-docs/issues/{}/comments".format(issue_id)
-    return post_url
+        return (
+            os.environ['CIRCLE_PULL_REQUEST']
+            .replace('github.com', 'api.github.com/repos')
+            .replace('pull', 'issues')
+            + "/comments"
+        )
+
+    # try to get from comment
+    last_comment = subprocess.check_output(["git", "log", "-1", "--pretty=%B"], text=True)
+    m = re.search(r"#(\d+)", last_comment, re.MULTILINE)
+    if not m:
+        print(
+            f"No issue id found in last commit comment. Ignoring: \n------\n{last_comment}\n-------"
+        )
+
+        return
+    issue_id = m[1]
+    print(f"Issue id found from last commit comment: {issue_id}")
+    return f"https://api.github.com/repos/demisto/content-docs/issues/{issue_id}/comments"
 
 
 def get_modified_files():
@@ -99,7 +106,7 @@ def post_comment(deploy_info_file: str):
     deploy_url = ""
     with open(deploy_info_file, 'r') as f:
         if matched_url := re.search("https://xsoar-pan-dev--pull-request-.*web.app", f.read()):
-            deploy_url = matched_url.group(0)
+            deploy_url = matched_url[0]
 
     # preview message
     message = f"# Preview Site Available\n\n" \
@@ -114,8 +121,7 @@ def post_comment(deploy_info_file: str):
     else:
         # add detcted changes
         try:
-            links = get_modified_links(deploy_url)
-            if links:
+            if links := get_modified_links(deploy_url):
                 message += '\n\nDetected modified urls:\n'
                 for link in links:
                     message += f'*  [{link[0]}]({link[1]})\n'
@@ -124,7 +130,7 @@ def post_comment(deploy_info_file: str):
             traceback.print_exc()
     print(f'Going to post comment:\n------------\n{message}\n------------\nto url: {post_url}')
     verify = os.getenv('SKIP_SSL_VERIFY') is None
-    headers = {'Authorization': 'Bearer ' + token}
+    headers = {'Authorization': f'Bearer {token}'}
     res = requests.post(post_url, json={"body": message}, headers=headers, verify=verify)
     res.raise_for_status()
 

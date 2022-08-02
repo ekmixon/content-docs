@@ -18,7 +18,7 @@ def random_string(string_length=10) -> str:
         str: random string
     """
     letters = string.ascii_lowercase
-    return ''.join(random.choice(letters) for i in range(string_length))
+    return ''.join(random.choice(letters) for _ in range(string_length))
 
 
 def test_get_start_time(mocker):
@@ -187,10 +187,10 @@ class TestParseFunctions:
         fields_gc_input = 'uuid,recsize,facility'
         # All case test
         assert tableToMarkdown(f'Logs {table_name} table', filtered_results_all, headers=headers_all) \
-            == logs_human_readable_output_generator(fields_all_input, table_name, raw_results)
+                == logs_human_readable_output_generator(fields_all_input, table_name, raw_results)
         # General case test
         assert tableToMarkdown(f'Logs {table_name} table', filtered_results_gc, headers=headers_gc, removeNull=True) \
-            == logs_human_readable_output_generator(fields_gc_input, table_name, raw_results)
+                == logs_human_readable_output_generator(fields_gc_input, table_name, raw_results)
 
     def test_build_where_clause(self):
         from PaloAltoNetworksCortex import build_where_clause
